@@ -17,30 +17,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Remove failed stack if needed
-        shell: bash
-        run: |
-          stack_status=$(aws cloudformation describe-stacks \
-            --stack-name sprs3-bucket-stack \
-            --query 'Stacks[0].StackStatus' \
-            --output text 2>/dev/null || true)
-
-          if [ "$stack_status" = "ROLLBACK_COMPLETE" ]; then
-            aws cloudformation delete-stack --stack-name sprs3-bucket-stack
-            aws cloudformation wait stack-delete-complete --stack-name sprs3-bucket-stack
-          fi
-
       - name: Deploy CloudFormation stack
         run: |
           aws cloudformation deploy \
             --template-file infra/s3-template.yaml \
-            --stack-name sprs3-bucket-stack \
+            --stack-name spr0222-bucket-stack \
             --capabilities CAPABILITY_NAMED_IAM
-
-      - name: Show CloudFormation failure events
-        if: ${{ failure() }}
-        run: |
-          aws cloudformation describe-stack-events \
-            --stack-name sprs3-bucket-stack \
-            --query 'StackEvents[?ResourceStatus==`CREATE_FAILED` || ResourceStatus==`UPDATE_FAILED` || ResourceStatus==`DELETE_FAILED`].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]' \
-            --output table || true
