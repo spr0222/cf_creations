@@ -9,6 +9,10 @@ name: Deploy Elastic Beanstalk Node.js Stack
       - .github/workflows/deploy-beanstalk-nodejs-stack.yml
   workflow_dispatch:
 
+concurrency:
+  group: deploy-beanstalk-nodejs-stack
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
