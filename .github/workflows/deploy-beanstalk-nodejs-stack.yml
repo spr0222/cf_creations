@@ -17,6 +17,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check required secrets
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          if [ -z "$DB_PASSWORD" ]; then
+            echo "::error::The DB_PASSWORD repository secret is not set. Add it under Settings > Secrets and variables > Actions." >&2
+            exit 1
+          fi
+          PASSWORD_LENGTH=$(printf '%s' "$DB_PASSWORD" | wc -c)
+          if [ "$PASSWORD_LENGTH" -lt 8 ]; then
+            echo "::error::DB_PASSWORD must be at least 8 characters long." >&2
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -41,6 +55,8 @@ jobs:
           echo "stack=$STACK" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Elastic Beanstalk Node.js stack
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           aws cloudformation deploy \
             --template-file infra/beanstalk-nodejs-stack.yaml \
@@ -48,7 +64,7 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               SolutionStackName="${{ steps.solution-stack.outputs.stack }}" \
-              DBPassword=${{ secrets.DB_PASSWORD }} \
+              DBPassword="$DB_PASSWORD" \
             --no-fail-on-empty-changeset
 
       - name: Show CloudFormation failure events
