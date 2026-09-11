@@ -30,6 +30,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: List available Node.js solution stacks
+        run: |
+          aws elasticbeanstalk list-available-solution-stacks \
+            --query "SolutionStacks[?contains(@, 'Node.js')]" \
+            --output table
+
       - name: Deploy/Update CloudFormation stack
         run: |
           aws cloudformation deploy \
