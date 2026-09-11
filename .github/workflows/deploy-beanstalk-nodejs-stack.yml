@@ -27,13 +27,28 @@ jobs:
       - name: Validate CloudFormation template
         run: aws cloudformation validate-template --template-body file://infra/beanstalk-nodejs-stack.yaml
 
+      - name: Resolve current Node.js solution stack
+        id: solution-stack
+        run: |
+          STACK=$(aws elasticbeanstalk list-available-solution-stacks \
+            --query "SolutionStacks[?contains(@, 'running Node.js')] | [0]" \
+            --output text)
+          if [ -z "$STACK" ] || [ "$STACK" = "None" ]; then
+            echo "No Node.js solution stack found" >&2
+            exit 1
+          fi
+          echo "Using solution stack: $STACK"
+          echo "stack=$STACK" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Elastic Beanstalk Node.js stack
         run: |
           aws cloudformation deploy \
             --template-file infra/beanstalk-nodejs-stack.yaml \
             --stack-name spr0222-beanstalk-nodejs-stack \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides DBPassword=${{ secrets.DB_PASSWORD }} \
+            --parameter-overrides \
+              SolutionStackName="${{ steps.solution-stack.outputs.stack }}" \
+              DBPassword=${{ secrets.DB_PASSWORD }} \
             --no-fail-on-empty-changeset
 
       - name: Show CloudFormation failure events

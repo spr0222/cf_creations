@@ -305,7 +305,6 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
-        - arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -327,8 +326,8 @@ Resources:
               StringEquals:
                 sts:ExternalId: elasticbeanstalk
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AWSElasticBeanstalkEnhancedHealth
-        - arn:aws:iam::aws:policy/AWSElasticBeanstalkManagedUpdatesCustomerRolePolicy
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService
 
   # ---------------------------------------------------------------------
   # Elastic Beanstalk application + environment
@@ -392,8 +391,10 @@ Resources:
         - Namespace: aws:autoscaling:launchconfiguration
           OptionName: IamInstanceProfile
           Value: !Ref InstanceProfile
-        - Namespace: aws:autoscaling:launchconfiguration
-          OptionName: InstanceType
+        # AL2023 platforms require the instance type on aws:ec2:instances,
+        # not the legacy aws:autoscaling:launchconfiguration/InstanceType.
+        - Namespace: aws:ec2:instances
+          OptionName: InstanceTypes
           Value: !Ref InstanceType
         - Namespace: aws:autoscaling:launchconfiguration
           OptionName: SecurityGroups
@@ -402,10 +403,10 @@ Resources:
         # --- Auto Scaling group ---
         - Namespace: aws:autoscaling:asg
           OptionName: MinSize
-          Value: !Ref AsgMinSize
+          Value: !Sub '${AsgMinSize}'
         - Namespace: aws:autoscaling:asg
           OptionName: MaxSize
-          Value: !Ref AsgMaxSize
+          Value: !Sub '${AsgMaxSize}'
 
         # --- Deployments: Rolling with a fixed batch size of one instance ---
         - Namespace: aws:elasticbeanstalk:command
