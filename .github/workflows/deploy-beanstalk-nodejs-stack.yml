@@ -1,0 +1,45 @@
+name: Deploy Elastic Beanstalk Node.js Stack
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - infra/beanstalk-nodejs-stack.yaml
+      - .github/workflows/deploy-beanstalk-nodejs-stack.yml
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Validate CloudFormation template
+        run: aws cloudformation validate-template --template-body file://infra/beanstalk-nodejs-stack.yaml
+
+      - name: Deploy Elastic Beanstalk Node.js stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/beanstalk-nodejs-stack.yaml \
+            --stack-name spr0222-beanstalk-nodejs-stack \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides DBPassword=${{ secrets.DB_PASSWORD }} \
+            --no-fail-on-empty-changeset
+
+      - name: Show CloudFormation failure events
+        if: ${{ failure() }}
+        run: |
+          aws cloudformation describe-stack-events \
+            --stack-name spr0222-beanstalk-nodejs-stack \
+            --query 'StackEvents[?ResourceStatus==`CREATE_FAILED` || ResourceStatus==`UPDATE_FAILED` || ResourceStatus==`DELETE_FAILED`].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]' \
+            --output table || true
