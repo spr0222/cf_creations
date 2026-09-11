@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Elastic Beanstalk environment with Application Load Balancer, Auto Scaling
+  Group, and a Rolling deployment policy using a Fixed batch size.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: my-eb-app
+    Description: Name of the Elastic Beanstalk application
+
+  EnvName:
+    Type: String
+    Default: my-eb-env
+    Description: Name of the Elastic Beanstalk environment
+
+  SolutionStackName:
+    Type: String
+    # Run `aws elasticbeanstalk list-available-solution-stacks` to see current options
+    Default: "64bit Amazon Linux 2023 v6.4.5 running Node.js 20"
+    Description: Platform/solution stack to use
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: EC2 instance type for the environment
+
+  MinInstances:
+    Type: Number
+    Default: 2
+    Description: Minimum number of instances in the Auto Scaling Group
+
+  MaxInstances:
+    Type: Number
+    Default: 4
+    Description: Maximum number of instances in the Auto Scaling Group
+
+  BatchSizeFixed:
+    Type: Number
+    Default: 1
+    Description: Fixed number of instances to update at a time during a rolling deployment
+
+  EC2KeyName:
+    Type: String
+    Default: ""
+    Description: (Optional) EC2 key pair name for SSH access. Leave blank to disable.
+
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref EC2KeyName, ""]]
+
+Resources:
+
+  ## S3 bucket to store application version zip files uploaded by the CI/CD pipeline
+  AppVersionBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AppName}-versions-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ## IAM Role + Instance Profile used by the EC2 instances Beanstalk launches
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-eb-ec2-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${AppName}-eb-ec2-profile"
+      Roles:
+        - !Ref EC2InstanceRole
+
+  ## IAM Role used by the Elastic Beanstalk service itself
+  EBServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-eb-service-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: elasticbeanstalk.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: elasticbeanstalk
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService
+
+  ## The Elastic Beanstalk Application (logical container)
+  Application:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: !Ref AppName
+      Description: !Sub "${AppName} application"
+
+  ## Configuration Template: defines HOW the environment behaves
+  ConfigTemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName: !Ref Application
+      SolutionStackName: !Ref SolutionStackName
+      OptionSettings:
+        # --- Environment type: load balanced, not single instance ---
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: application
+
+        # --- Service role ---
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: ServiceRole
+          Value: !Ref EBServiceRole
+
+        # --- Instance profile for EC2 instances ---
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref EC2InstanceProfile
+
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: InstanceType
+          Value: !Ref InstanceType
+
+        # --- Auto Scaling Group sizing ---
+        - Namespace: aws:autoscaling:asg
+          OptionName: MinSize
+          Value: !Ref MinInstances
+
+        - Namespace: aws:autoscaling:asg
+          OptionName: MaxSize
+          Value: !Ref MaxInstances
+
+        # --- Deployment policy: Rolling with a FIXED batch size ---
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: DeploymentPolicy
+          Value: Rolling
+
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: BatchSizeType
+          Value: Fixed
+
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: BatchSize
+          Value: !Ref BatchSizeFixed
+
+        # --- Enhanced health reporting ---
+        - Namespace: aws:elasticbeanstalk:healthreporting:system
+          OptionName: SystemType
+          Value: enhanced
+
+        # --- Rolling update settings for the underlying Auto Scaling Group ---
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: RollingUpdateEnabled
+          Value: "true"
+
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: RollingUpdateType
+          Value: Health
+
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: MaxBatchSize
+          Value: !Ref BatchSizeFixed
+
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: MinInstancesInService
+          Value: !Ref MinInstances
+
+  ## The actual running Environment
+  Environment:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      EnvironmentName: !Ref EnvName
+      ApplicationName: !Ref Application
+      TemplateName: !Ref ConfigTemplate
+      OptionSettings: !If
+        - HasKeyName
+        - - Namespace: aws:autoscaling:launchconfiguration
+            OptionName: EC2KeyName
+            Value: !Ref EC2KeyName
+        - !Ref "AWS::NoValue"
+
+Outputs:
+  ApplicationName:
+    Value: !Ref Application
+    Export:
+      Name: !Sub "${AWS::StackName}-AppName"
+
+  EnvironmentName:
+    Value: !Ref Environment
+    Export:
+      Name: !Sub "${AWS::StackName}-EnvName"
+
+  EnvironmentURL:
+    Description: URL of the deployed environment
+    Value: !GetAtt Environment.EndpointURL
+
+  AppVersionBucketName:
+    Description: S3 bucket where the CI/CD pipeline should upload application version zips
+    Value: !Ref AppVersionBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-VersionBucket"
