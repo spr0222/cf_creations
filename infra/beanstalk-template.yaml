@@ -77,7 +77,6 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
-        - arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker
         - arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
 
   EC2InstanceProfile:
@@ -139,8 +138,8 @@ Resources:
           OptionName: IamInstanceProfile
           Value: !Ref EC2InstanceProfile
 
-        - Namespace: aws:autoscaling:launchconfiguration
-          OptionName: InstanceType
+        - Namespace: aws:ec2:instances
+          OptionName: InstanceTypes
           Value: !Ref InstanceType
 
         # --- Auto Scaling Group sizing ---
