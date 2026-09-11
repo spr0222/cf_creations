@@ -146,11 +146,11 @@ Resources:
         # --- Auto Scaling Group sizing ---
         - Namespace: aws:autoscaling:asg
           OptionName: MinSize
-          Value: !Ref MinInstances
+          Value: !Sub "${MinInstances}"
 
         - Namespace: aws:autoscaling:asg
           OptionName: MaxSize
-          Value: !Ref MaxInstances
+          Value: !Sub "${MaxInstances}"
 
         # --- Deployment policy: Rolling with a FIXED batch size ---
         - Namespace: aws:elasticbeanstalk:command
@@ -163,7 +163,7 @@ Resources:
 
         - Namespace: aws:elasticbeanstalk:command
           OptionName: BatchSize
-          Value: !Ref BatchSizeFixed
+          Value: !Sub "${BatchSizeFixed}"
 
         # --- Enhanced health reporting ---
         - Namespace: aws:elasticbeanstalk:healthreporting:system
@@ -181,11 +181,11 @@ Resources:
 
         - Namespace: aws:autoscaling:updatepolicy:rollingupdate
           OptionName: MaxBatchSize
-          Value: !Ref BatchSizeFixed
+          Value: !Sub "${BatchSizeFixed}"
 
         - Namespace: aws:autoscaling:updatepolicy:rollingupdate
           OptionName: MinInstancesInService
-          Value: !Ref MinInstances
+          Value: !Sub "${MinInstances}"
 
   ## The actual running Environment
   Environment:
